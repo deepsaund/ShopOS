@@ -492,3 +492,127 @@ model CscNotification {
   @@index([tenantId, userId])
   @@map("csc_notifications")
 }
+
+enum DeviceType {
+  MOBILE
+  LAPTOP
+  TABLET
+  TV
+  AC
+  OTHER
+}
+
+enum JobStatus {
+  RECEIVED
+  DIAGNOSING
+  WAITING_FOR_PARTS
+  REPAIRING
+  READY
+  DELIVERED
+  UNREPAIRABLE
+  RETURNED_UNREPAIRED
+}
+
+enum RepairPaymentType {
+  ADVANCE
+  FINAL
+  REFUND
+}
+
+model RepairCustomer {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  name      String
+  phone     String
+  email     String?
+  address   String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  jobCards  JobCard[]
+
+  @@index([tenantId, name])
+  @@index([tenantId, phone])
+  @@map("repair_customers")
+}
+
+model JobCard {
+  id                       String             @id @default(uuid())
+  tenantId                 String             @map("tenant_id")
+  customerId               String             @map("customer_id")
+  customer                 RepairCustomer     @relation(fields: [customerId], references: [id])
+  jobNumber               String             @map("job_number")
+  deviceType               DeviceType         @map("device_type")
+  deviceBrand              String             @map("device_brand")
+  deviceModel              String             @map("device_model")
+  imeiSerial               String?            @map("imei_serial")
+  reportedIssue            String             @map("reported_issue") @db.Text
+  diagnosedIssue           String?            @map("diagnosed_issue") @db.Text
+  status                   JobStatus          @default(RECEIVED)
+  estimatedCost            Decimal            @map("estimated_cost") @db.Decimal(10, 2)
+  finalCost                Decimal            @default(0) @map("final_cost") @db.Decimal(10, 2)
+  advanceTaken             Decimal            @default(0) @map("advance_taken") @db.Decimal(10, 2)
+  balanceDue               Decimal            @default(0) @map("balance_due") @db.Decimal(10, 2)
+  warrantyDays             Int                @default(0) @map("warranty_days")
+  deliveryDate             DateTime           @map("delivery_date")
+  deliveredAt              DateTime?          @map("delivered_at")
+  assignedToStaff          String             @map("assigned_to_staff")
+  deviceConditionOnReceipt String             @map("device_condition_on_receipt") @db.Text
+  customerSignatureUrl     String?            @map("customer_signature_url")
+  
+  warrantyParentId         String?            @map("warranty_parent_id")
+  warrantyParent           JobCard?           @relation("WarrantyClaims", fields: [warrantyParentId], references: [id])
+  warrantyClaims           JobCard[]          @relation("WarrantyClaims")
+
+  partsUsed                JobCardPart[]
+  payments                 RepairPayment[]
+  createdAt                DateTime           @default(now()) @map("created_at")
+  updatedAt                DateTime           @updatedAt @map("updated_at")
+
+  @@unique([tenantId, jobNumber])
+  @@index([tenantId, status])
+  @@map("job_cards")
+}
+
+model RepairPart {
+  id                String        @id @default(uuid())
+  tenantId          String        @map("tenant_id")
+  partName          String        @map("part_name")
+  partNumber        String        @map("part_number")
+  compatibleDevices String        @map("compatible_devices")
+  quantityInStock   Int           @map("quantity_in_stock")
+  costPrice         Decimal       @map("cost_price") @db.Decimal(10, 2)
+  sellingPrice      Decimal       @map("selling_price") @db.Decimal(10, 2)
+  lowStockThreshold Int           @default(5) @map("low_stock_threshold")
+  jobCardParts      JobCardPart[]
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  @@index([tenantId, partNumber])
+  @@map("repair_parts")
+}
+
+model JobCardPart {
+  id           String     @id @default(uuid())
+  jobId        String     @map("job_id")
+  jobCard      JobCard    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  partId       String     @map("part_id")
+  repairPart   RepairPart @relation(fields: [partId], references: [id])
+  quantityUsed Int        @map("quantity_used")
+  priceCharged Decimal    @map("price_charged") @db.Decimal(10, 2)
+
+  @@map("job_card_parts")
+}
+
+model RepairPayment {
+  id          String            @id @default(uuid())
+  tenantId    String            @map("tenant_id")
+  jobId       String            @map("job_id")
+  jobCard     JobCard           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  amount      Decimal           @db.Decimal(10, 2)
+  paymentMode PaymentMode       @map("payment_mode")
+  paymentType RepairPaymentType @map("payment_type")
+  paidAt      DateTime          @default(now()) @map("paid_at")
+
+  @@map("repair_payments")
+}
+
