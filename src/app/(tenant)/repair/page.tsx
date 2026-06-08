@@ -16,6 +16,7 @@ import {
   ArrowRight,
   User,
   ExternalLink,
+  PlusCircle,
 } from "lucide-react";
 
 interface JobCard {
