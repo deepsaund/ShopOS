@@ -1,0 +1,494 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum TransactionType {
+  IN
+  OUT
+}
+
+enum ReferenceType {
+  PURCHASE
+  ORDER_USAGE
+  WASTAGE
+  RETURN
+}
+
+enum OrderStatus {
+  TAKEN
+  CUTTING
+  STITCHING
+  TRIAL
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum GarmentType {
+  SHIRT
+  PANT
+  SUIT
+  KURTA
+  SALWAR_KAMEEZ
+  BLOUSE
+  COAT
+  OTHER
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  CARD
+  CREDIT
+}
+
+enum PaymentType {
+  ADVANCE
+  BALANCE
+  REFUND
+}
+
+model TailorCustomer {
+  id           String        @id @default(uuid())
+  tenantId     String        @map("tenant_id")
+  name         String
+  phone        String
+  email        String?
+  address      String?
+  measurements Json          // JSON field storing { chest, waist, hips, shoulder, sleeve_length, shirt_length, pant_length, pant_waist, pant_thigh, notes }
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  orders       TailorOrder[]
+
+  @@index([tenantId, name])
+  @@index([tenantId, phone])
+  @@map("tailor_customers")
+}
+
+model Supplier {
+  id            String         @id @default(uuid())
+  tenantId      String         @map("tenant_id")
+  name          String
+  phone         String
+  address       String
+  gstNumber     String?        @map("gst_number")
+  clothStock    ClothStock[]
+  shoePurchases ShoePurchase[]
+
+  @@map("suppliers")
+}
+
+model ClothStock {
+  id                        String             @id @default(uuid())
+  tenantId                  String             @map("tenant_id")
+  supplierId                String             @map("supplier_id")
+  supplier                  Supplier           @relation(fields: [supplierId], references: [id])
+  fabricName                String             @map("fabric_name")
+  fabricType                String             @map("fabric_type")
+  color                     String
+  pattern                   String?
+  quantityMeters            Decimal            @map("quantity_meters") @db.Decimal(10, 2)
+  ratePerMeter              Decimal            @map("rate_per_meter") @db.Decimal(10, 2)
+  lowStockThresholdMeters   Decimal            @map("low_stock_threshold_meters") @db.Decimal(10, 2)
+  receivedDate              DateTime           @default(now()) @map("received_date")
+  createdAt                 DateTime           @default(now()) @map("created_at")
+  stockTransactions         StockTransaction[]
+  orderItems                TailorOrderItem[]
+
+  @@map("cloth_stocks")
+}
+
+model StockTransaction {
+  id              String         @id @default(uuid())
+  tenantId        String         @map("tenant_id")
+  clothStockId    String         @map("cloth_stock_id")
+  clothStock      ClothStock     @relation(fields: [clothStockId], references: [id])
+  transactionType TransactionType @map("transaction_type")
+  quantityMeters  Decimal        @map("quantity_meters") @db.Decimal(10, 2)
+  referenceType   ReferenceType  @map("reference_type")
+  referenceId     String         @map("reference_id")
+  notes           String?
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  @@map("stock_transactions")
+}
+
+model TailorOrder {
+  id                  String            @id @default(uuid())
+  tenantId            String            @map("tenant_id")
+  customerId          String            @map("customer_id")
+  customer            TailorCustomer    @relation(fields: [customerId], references: [id])
+  orderNumber         String            @map("order_number")
+  status              OrderStatus       @default(TAKEN)
+  deliveryDate        DateTime          @map("delivery_date")
+  totalAmount         Decimal           @map("total_amount") @db.Decimal(10, 2)
+  advancePaid         Decimal           @default(0) @map("advance_paid") @db.Decimal(10, 2)
+  balanceDue          Decimal           @default(0) @map("balance_due") @db.Decimal(10, 2)
+  specialInstructions String?           @map("special_instructions")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  items               TailorOrderItem[]
+  payments            Payment[]
+
+  @@unique([tenantId, orderNumber])
+  @@map("tailor_orders")
+}
+
+model TailorOrderItem {
+  id               String       @id @default(uuid())
+  orderId          String       @map("order_id")
+  order            TailorOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  garmentType      GarmentType  @map("garment_type")
+  clothStockId     String?      @map("cloth_stock_id")
+  clothStock       ClothStock?  @relation(fields: [clothStockId], references: [id])
+  fabricMetersUsed Decimal?     @map("fabric_meters_used") @db.Decimal(10, 2)
+  itemPrice        Decimal      @map("item_price") @db.Decimal(10, 2)
+  customNotes      String?      @map("custom_notes")
+
+  @@map("tailor_order_items")
+}
+
+model Payment {
+  id          String      @id @default(uuid())
+  tenantId    String      @map("tenant_id")
+  orderId     String      @map("order_id")
+  order       TailorOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount      Decimal     @db.Decimal(10, 2)
+  paymentMode PaymentMode @map("payment_mode")
+  paymentType PaymentType @map("payment_type")
+  paidAt      DateTime    @default(now()) @map("paid_at")
+  notes       String?
+
+  @@map("payments")
+}
+
+enum ShoeCategory {
+  FORMAL
+  CASUAL
+  SPORTS
+  SANDAL
+  SLIPPER
+  KIDS
+  OTHER
+}
+
+enum ShoePaymentMode {
+  CASH
+  UPI
+  CARD
+  UDHAAR
+  PARTIAL
+}
+
+enum UdhaarTransactionType {
+  CREDIT
+  PAYMENT
+}
+
+enum EmployeeRole {
+  MANAGER
+  SALESPERSON
+  HELPER
+}
+
+enum SalaryPaymentMode {
+  CASH
+  UPI
+  BANK
+}
+
+model ShoeBrand {
+  id        String        @id @default(uuid())
+  tenantId  String        @map("tenant_id")
+  name      String
+  logoUrl   String?       @map("logo_url")
+  products  ShoeProduct[]
+
+  @@index([tenantId, name])
+  @@map("shoe_brands")
+}
+
+model ShoeProduct {
+  id          String       @id @default(uuid())
+  tenantId    String       @map("tenant_id")
+  brandId     String       @map("brand_id")
+  brand       ShoeBrand    @relation(fields: [brandId], references: [id])
+  modelName   String       @map("model_name")
+  category    ShoeCategory
+  description String?
+  images      String[]
+  skus        ShoeSKU[]
+
+  @@index([tenantId, modelName])
+  @@map("shoe_products")
+}
+
+model ShoeSKU {
+  id                 String             @id @default(uuid())
+  tenantId           String             @map("tenant_id")
+  productId          String             @map("product_id")
+  product            ShoeProduct        @relation(fields: [productId], references: [id])
+  size               String
+  color              String
+  quantityInStock    Int                @map("quantity_in_stock")
+  mrp                Decimal            @db.Decimal(10, 2)
+  sellingPrice       Decimal            @map("selling_price") @db.Decimal(10, 2)
+  costPrice          Decimal            @map("cost_price") @db.Decimal(10, 2)
+  lowStockThreshold  Int                @default(3) @map("low_stock_threshold")
+  barcode            String?
+  purchaseItems      ShoePurchaseItem[]
+  saleItems          ShoeSaleItem[]
+
+  @@index([tenantId])
+  @@map("shoe_skus")
+}
+
+model ShoePurchase {
+  id            String             @id @default(uuid())
+  tenantId      String             @map("tenant_id")
+  supplierId    String             @map("supplier_id")
+  supplier      Supplier           @relation(fields: [supplierId], references: [id])
+  invoiceNumber String             @map("invoice_number")
+  purchaseDate  DateTime           @map("purchase_date")
+  totalAmount   Decimal            @map("total_amount") @db.Decimal(10, 2)
+  notes         String?
+  items         ShoePurchaseItem[]
+
+  @@index([tenantId, invoiceNumber])
+  @@map("shoe_purchases")
+}
+
+model ShoePurchaseItem {
+  id               String       @id @default(uuid())
+  purchaseId       String       @map("purchase_id")
+  purchase         ShoePurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  skuId            String       @map("sku_id")
+  sku              ShoeSKU      @relation(fields: [skuId], references: [id])
+  quantity         Int
+  costPricePerUnit Decimal      @map("cost_price_per_unit") @db.Decimal(10, 2)
+
+  @@map("shoe_purchase_items")
+}
+
+model ShoeSale {
+  id            String          @id @default(uuid())
+  tenantId      String          @map("tenant_id")
+  customerId    String?         @map("customer_id")
+  customer      ShoeCustomer?   @relation(fields: [customerId], references: [id])
+  saleDate      DateTime        @map("sale_date")
+  totalMrp      Decimal         @map("total_mrp") @db.Decimal(10, 2)
+  discount      Decimal         @db.Decimal(10, 2)
+  totalAmount   Decimal         @map("total_amount") @db.Decimal(10, 2)
+  paymentMode   ShoePaymentMode @map("payment_mode")
+  amountPaid    Decimal         @map("amount_paid") @db.Decimal(10, 2)
+  amountPending Decimal         @map("amount_pending") @db.Decimal(10, 2)
+  servedBy      String          @map("served_by")
+  notes         String?
+  items         ShoeSaleItem[]
+  udhaarLedgers UdhaarLedger[]
+
+  @@index([tenantId, saleDate])
+  @@map("shoe_sales")
+}
+
+model ShoeSaleItem {
+  id              String   @id @default(uuid())
+  saleId          String   @map("sale_id")
+  sale            ShoeSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  skuId           String   @map("sku_id")
+  sku             ShoeSKU  @relation(fields: [skuId], references: [id])
+  quantity        Int
+  pricePerUnit    Decimal  @map("price_per_unit") @db.Decimal(10, 2)
+  discountPerUnit Decimal  @map("discount_per_unit") @db.Decimal(10, 2)
+
+  @@map("shoe_sale_items")
+}
+
+model ShoeCustomer {
+  id                 String         @id @default(uuid())
+  tenantId           String         @map("tenant_id")
+  name               String
+  phone              String
+  address            String?
+  totalUdhaarBalance Decimal        @default(0) @map("total_udhaar_balance") @db.Decimal(10, 2)
+  sales              ShoeSale[]
+  udhaarLedgers      UdhaarLedger[]
+
+  @@index([tenantId, name])
+  @@index([tenantId, phone])
+  @@map("shoe_customers")
+}
+
+model UdhaarLedger {
+  id              String                @id @default(uuid())
+  tenantId        String                @map("tenant_id")
+  customerId      String                @map("customer_id")
+  customer        ShoeCustomer          @relation(fields: [customerId], references: [id])
+  transactionType UdhaarTransactionType @map("transaction_type")
+  amount          Decimal               @db.Decimal(10, 2)
+  saleId          String?               @map("sale_id")
+  sale            ShoeSale?             @relation(fields: [saleId], references: [id])
+  notes           String?
+  createdAt       DateTime              @default(now()) @map("created_at")
+
+  @@index([tenantId, customerId])
+  @@map("udhaar_ledger")
+}
+
+model Employee {
+  id            String         @id @default(uuid())
+  tenantId      String         @map("tenant_id")
+  name          String
+  phone         String
+  role          EmployeeRole
+  salaryAmount  Decimal        @map("salary_amount") @db.Decimal(10, 2)
+  joinDate      DateTime       @map("join_date")
+  isActive      Boolean        @default(true) @map("is_active")
+  salaryRecords SalaryRecord[]
+
+  @@index([tenantId, name])
+  @@map("employees")
+}
+
+model SalaryRecord {
+  id          String            @id @default(uuid())
+  tenantId    String            @map("tenant_id")
+  employeeId  String            @map("employee_id")
+  employee    Employee          @relation(fields: [employeeId], references: [id])
+  month       String            @map("month") // YYYY-MM
+  amountPaid  Decimal           @map("amount_paid") @db.Decimal(10, 2)
+  paymentDate DateTime          @map("payment_date")
+  paymentMode SalaryPaymentMode @map("payment_mode")
+  notes       String?
+
+  @@index([tenantId, employeeId])
+  @@map("salary_records")
+}
+
+enum CscRequestRole {
+  CUSTOMER
+  STAFF
+  B2B
+}
+
+enum CscRequestStatus {
+  PENDING_DOCUMENTS
+  SUBMITTED
+  DOCS_APPROVED
+  PROCESSING
+  COMPLETED
+}
+
+enum RequestDocStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model CscCustomer {
+  id        String          @id @default(uuid())
+  tenantId  String          @map("tenant_id")
+  name      String
+  phone     String
+  email     String?
+  address   String?
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  vaultDocs DocumentVault[]
+  requests  CscRequest[]
+
+  @@index([tenantId, name])
+  @@index([tenantId, phone])
+  @@map("csc_customers")
+}
+
+model CscService {
+  id                String       @id @default(uuid())
+  tenantId          String       @map("tenant_id")
+  name              String
+  description       String
+  priceCustomer     Decimal      @map("price_customer") @db.Decimal(10, 2)
+  priceB2b          Decimal      @map("price_b2b") @db.Decimal(10, 2)
+  estimatedDays     Int          @map("estimated_days")
+  requiredDocuments Json         // array of {name, description, is_mandatory}
+  requests          CscRequest[]
+
+  @@index([tenantId])
+  @@map("csc_services")
+}
+
+model DocumentVault {
+  id         String      @id @default(uuid())
+  tenantId   String      @map("tenant_id")
+  customerId String      @map("customer_id")
+  customer   CscCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  docType    String      @map("doc_type") // e.g. "Aadhaar", "PAN"
+  fileUrl    String      @map("file_url")
+  uploadedAt DateTime    @default(now()) @map("uploaded_at")
+
+  @@index([tenantId, customerId])
+  @@map("csc_document_vault")
+}
+
+model CscRequest {
+  id               String           @id @default(uuid())
+  tenantId         String           @map("tenant_id")
+  customerId       String           @map("customer_id")
+  customer         CscCustomer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  serviceId        String           @map("service_id")
+  service          CscService       @relation(fields: [serviceId], references: [id])
+  createdByRole    CscRequestRole   @map("created_by_role")
+  claimedByStaffId String?          @map("claimed_by_staff_id")
+  status           CscRequestStatus @default(SUBMITTED)
+  priceCharged     Decimal          @map("price_charged") @db.Decimal(10, 2)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  completedAt      DateTime?        @map("completed_at")
+  documents        RequestDocument[]
+  messages         CscMessage[]
+
+  @@index([tenantId])
+  @@map("csc_requests")
+}
+
+model RequestDocument {
+  id              String           @id @default(uuid())
+  requestId       String           @map("request_id")
+  request         CscRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  docType         String           @map("doc_type")
+  fileUrl         String           @map("file_url")
+  status          RequestDocStatus @default(PENDING)
+  rejectionReason String?          @map("rejection_reason")
+  reviewedAt      DateTime?        @map("reviewed_at")
+
+  @@map("csc_request_documents")
+}
+
+model CscMessage {
+  id         String     @id @default(uuid())
+  requestId  String     @map("request_id")
+  request    CscRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  senderId   String     @map("sender_id")
+  senderRole String     @map("sender_role") // "CUSTOMER" or "STAFF" or "ADMIN"
+  content    String
+  sentAt     DateTime   @default(now()) @map("sent_at")
+
+  @@map("csc_messages")
+}
+
+model CscNotification {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  userId    String   @map("user_id")
+  message   String
+  requestId String   @map("request_id")
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, userId])
+  @@map("csc_notifications")
+}
